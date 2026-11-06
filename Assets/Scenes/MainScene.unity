@@ -912,20 +912,20 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 4112039613056322136, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
-      propertyPath: maxHP
-      value: 1000
-      objectReference: {fileID: 0}
-    - target: {fileID: 4112039613056322136, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
       propertyPath: hpSlider
       value: 
       objectReference: {fileID: 976665784}
+    - target: {fileID: 4112039613056322136, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
+      propertyPath: currentHP
+      value: 1000
+      objectReference: {fileID: 0}
+    - target: {fileID: 4112039613056322136, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
+      propertyPath: destroyOnDeath
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4907239047242697928, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
       propertyPath: m_Name
       value: Creep2
-      objectReference: {fileID: 0}
-    - target: {fileID: 4907239047242697928, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
-      propertyPath: m_TagString
-      value: Enemy
       objectReference: {fileID: 0}
     - target: {fileID: 4907239047242697930, guid: 82430f94fd1381c43878fce981a5aa43, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1018,16 +1018,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   puzzleBoard: {fileID: 1522035838}
-  stateText: {fileID: 1160579487}
-  orbTypeToPieceKind: 
-  enemies:
-  - {fileID: 1324604026}
-  playerManager: {fileID: 864997486}
-  mainCamera: {fileID: 1305936861}
-  cameraPoints:
-  - {fileID: 1305936862}
-  cameraMoveTime: 1.5
-  damagePerPiece: 10
+  playerAttacks: []
+  targetEnemy: {fileID: 1324604026}
+  damagePerOrb: 10
+  comboDamageMultiplier: 0.5
+  logDetails: 1
 --- !u!114 &864997486
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1216,7 +1211,7 @@ MonoBehaviour:
   m_MinValue: 0
   m_MaxValue: 1
   m_WholeNumbers: 0
-  m_Value: 0
+  m_Value: 1
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -2020,8 +2015,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -390.5}
-  m_SizeDelta: {x: 720, y: 570}
+  m_AnchoredPosition: {x: 0, y: -372.75}
+  m_SizeDelta: {x: 720, y: 534.5}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1522035835
 MonoBehaviour:

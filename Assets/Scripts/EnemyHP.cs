@@ -1,40 +1,76 @@
+
 using UnityEngine;
 using UnityEngine.UI;
+using System;
 
 public class EnemyHP : MonoBehaviour
 {
+    [Header("HP設定")]
+    [SerializeField] private int maxHP = 100;
+    [SerializeField] private int currentHP = 100;
+
+    [Header("HPバー（Sliderを使用する場合）")]
     [SerializeField] private Slider hpSlider;
 
-    [SerializeField] private int maxHP = 100;
+    [Header("HP表示（任意）")]
+    [SerializeField] private Text hpText;
 
-    private int currentHP;
+    [Header("死亡時の設定")]
+    [SerializeField] private bool destroyOnDeath = false;
+    [SerializeField] private float destroyDelay = 1f;
 
-    private bool isDead = false;
+    private bool isDead;
 
-    private void Start()
+    public int MaxHP => maxHP;
+    public int CurrentHP => currentHP;
+    public bool IsDead => isDead;
+
+    public event Action<int, int> OnHPChanged;
+    public event Action OnDeath;
+
+    private void Awake()
     {
-        currentHP = maxHP;
+        maxHP = Mathf.Max(1, maxHP);
+        currentHP = Mathf.Clamp(currentHP, 0, maxHP);
 
-        if (hpSlider != null)
-        {
-            hpSlider.maxValue = maxHP;
-            hpSlider.value = currentHP;
-        }
+        isDead = currentHP <= 0;
+
+        UpdateHPUI();
     }
 
+    /// <summary>
+    /// 攻撃を受けたときに呼び出す。
+    /// </summary>
     public void TakeDamage(int damage)
     {
-        // 既に倒されていたら何もしない
         if (isDead)
+        {
+            Debug.Log("EnemyHP：敵はすでに倒れています。", this);
             return;
+        }
 
-        currentHP -= damage;
+        if (damage <= 0)
+        {
+            Debug.LogWarning(
+                "EnemyHP：ダメージが0以下です。",
+                this
+            );
+            return;
+        }
 
-        if (currentHP < 0)
-            currentHP = 0;
+        int beforeHP = currentHP;
 
-        if (hpSlider != null)
-            hpSlider.value = currentHP;
+        currentHP = Mathf.Max(0, currentHP - damage);
+
+        Debug.Log(
+            $"EnemyHP：{gameObject.name} が {damage} ダメージを受けました。" +
+            $" HP：{beforeHP} → {currentHP}/{maxHP}",
+            this
+        );
+
+        UpdateHPUI();
+
+        OnHPChanged?.Invoke(currentHP, maxHP);
 
         if (currentHP <= 0)
         {
@@ -42,16 +78,78 @@ public class EnemyHP : MonoBehaviour
         }
     }
 
-    private void Die()
+    /// <summary>
+    /// HPバーとHPテキストを更新する。
+    /// </summary>
+    private void UpdateHPUI()
     {
-        isDead = true;
-
-        // GameManagerへ通知
-        if (GameManager.Instance != null)
+        if (hpSlider != null)
         {
-            GameManager.Instance.NextEnemy();
+            hpSlider.minValue = 0;
+            hpSlider.maxValue = maxHP;
+            hpSlider.value = currentHP;
         }
 
-        Destroy(gameObject);
+        if (hpText != null)
+        {
+            hpText.text = currentHP + " / " + maxHP;
+        }
+    }
+
+    /// <summary>
+    /// 回復処理。
+    /// </summary>
+    public void Heal(int amount)
+    {
+        if (isDead || amount <= 0)
+        {
+            return;
+        }
+
+        currentHP = Mathf.Min(maxHP, currentHP + amount);
+
+        UpdateHPUI();
+
+        OnHPChanged?.Invoke(currentHP, maxHP);
+
+        Debug.Log(
+            $"EnemyHP：{amount} 回復。現在HP={currentHP}/{maxHP}",
+            this
+        );
+    }
+
+    /// <summary>
+    /// 敵の死亡処理。
+    /// </summary>
+    private void Die()
+    {
+        if (isDead)
+        {
+            return;
+        }
+
+        isDead = true;
+
+        Debug.Log($"EnemyHP：{gameObject.name} を倒しました！", this);
+
+        OnDeath?.Invoke();
+
+        if (destroyOnDeath)
+        {
+            Destroy(gameObject, destroyDelay);
+        }
+    }
+
+    /// <summary>
+    /// HPを最大まで戻す。
+    /// </summary>
+    public void ResetHP()
+    {
+        currentHP = maxHP;
+        isDead = false;
+
+        UpdateHPUI();
+
+        OnHPChanged?.Invoke(currentHP, maxHP);
     }
 }

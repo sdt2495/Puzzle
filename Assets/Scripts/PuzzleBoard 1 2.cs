@@ -795,9 +795,12 @@ public class PuzzleBoard : MonoBehaviour
             return;
         }
 
-        for (int x = 0; x < columns; x++)
+        int gridColumns = grid.GetLength(0);
+        int gridRows = grid.GetLength(1);
+
+        for (int x = 0; x < gridColumns; x++)
         {
-            for (int y = 0; y < rows; y++)
+            for (int y = 0; y < gridRows; y++)
             {
                 Orb orb = grid[x, y];
 
@@ -816,7 +819,6 @@ public class PuzzleBoard : MonoBehaviour
             }
         }
     }
-
     private bool AllSettled()
     {
         if (grid == null)
@@ -1247,5 +1249,27 @@ public class PuzzleBoard : MonoBehaviour
                 comboStyle
             );
         }
+    }
+
+    private void CancelDrag()
+    {
+        if (heldOrb != null && heldOrb.tr != null)
+        {
+            heldOrb.tr.position = CellToWorld(heldCell);
+            heldOrb.tr.localScale = Vector3.one * heldOrb.baseScale;
+
+            if (heldOrb.sr != null)
+            {
+                heldOrb.sr.sortingOrder = 0;
+
+                Color color = heldOrb.sr.color;
+                color.a = 1f;
+                heldOrb.sr.color = color;
+            }
+        }
+
+        heldOrb = null;
+        moveStarted = false;
+        state = State.Idle;
     }
 }
