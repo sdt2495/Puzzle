@@ -2,17 +2,35 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// プレイヤーの攻撃管理と敵のターン管理。
+///
+/// ・パズルの消去数に応じて敵を攻撃
+/// ・コンボ数に応じてダメージ増加
+/// ・プレイヤーが3ターン行動すると敵が攻撃
+/// ・敵の攻撃でPlayerのHPを減らす
+/// </summary>
 public class GameManager : MonoBehaviour
 {
     [Header("連携するオブジェクト")]
     [SerializeField] private PuzzleBoard puzzleBoard;
     [SerializeField] private PlayerAttack[] playerAttacks;
     [SerializeField] private EnemyHP targetEnemy;
+    [SerializeField] private PlayerHP playerHP;
 
-    [Header("攻撃設定")]
+    [Header("プレイヤー攻撃設定")]
     [SerializeField] private int damagePerOrb = 10;
     [SerializeField] private float comboDamageMultiplier = 0.5f;
+
+    [Header("敵の攻撃設定")]
+    [SerializeField] private int playerTurnsPerEnemyAttack = 3;
+    [SerializeField] private int enemyAttackDamage = 20;
+
+    [Header("ログ設定")]
     [SerializeField] private bool logDetails = true;
+
+    // 現在のプレイヤーターン数
+    private int playerTurnCount = 0;
 
     private void Awake()
     {
@@ -24,6 +42,11 @@ public class GameManager : MonoBehaviour
         if (targetEnemy == null)
         {
             targetEnemy = FindObjectOfType<EnemyHP>();
+        }
+
+        if (playerHP == null)
+        {
+            playerHP = FindObjectOfType<PlayerHP>();
         }
 
         if (playerAttacks == null || playerAttacks.Length == 0)
@@ -39,7 +62,6 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        // Awake時点で参照できなかった場合にも対応
         SubscribePuzzleBoard();
     }
 
@@ -60,10 +82,7 @@ public class GameManager : MonoBehaviour
 
         if (puzzleBoard == null)
         {
-            Debug.LogError(
-                "GameManager：PuzzleBoardが見つかりません。",
-                this
-            );
+            Debug.LogError("GameManager：PuzzleBoardが見つかりません。", this);
             return;
         }
 
@@ -73,7 +92,7 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
-    /// PuzzleBoardで消去と連鎖が終了したときに呼ばれる。
+    /// パズルの消去と連鎖が終了したときに呼ばれる。
     /// </summary>
     private void OnMatchesResolved(
         Dictionary<int, int> matchCounts,
@@ -81,7 +100,17 @@ public class GameManager : MonoBehaviour
     {
         if (matchCounts == null || matchCounts.Count == 0)
         {
-            Debug.LogWarning("GameManager：消去数を受け取れませんでした。");
+            return;
+        }
+
+        if (playerHP == null)
+        {
+            playerHP = FindObjectOfType<PlayerHP>();
+        }
+
+        // Playerが倒れている場合は処理しない
+        if (playerHP != null && playerHP.IsDead)
+        {
             return;
         }
 
@@ -92,10 +121,7 @@ public class GameManager : MonoBehaviour
 
         if (targetEnemy == null)
         {
-            Debug.LogError(
-                "GameManager：EnemyHPが見つかりません。攻撃できません。",
-                this
-            );
+            Debug.LogError("GameManager：EnemyHPが見つかりません。", this);
             return;
         }
 
@@ -106,13 +132,11 @@ public class GameManager : MonoBehaviour
 
         if (playerAttacks == null || playerAttacks.Length == 0)
         {
-            Debug.LogError(
-                "GameManager：PlayerAttackが見つかりません。",
-                this
-            );
+            Debug.LogError("GameManager：PlayerAttackが見つかりません。", this);
             return;
         }
 
+        // 消去したオーブの合計数
         int totalOrbs = 0;
 
         foreach (KeyValuePair<int, int> pair in matchCounts)
@@ -120,8 +144,7 @@ public class GameManager : MonoBehaviour
             totalOrbs += pair.Value;
         }
 
-        // 3個消去なら基本ダメージ30。
-        // コンボ数が増えると追加ダメージが加算される。
+        // コンボ倍率を計算
         float comboMultiplier =
             1f + Mathf.Max(0, comboCount - 1) * comboDamageMultiplier;
 
@@ -134,11 +157,11 @@ public class GameManager : MonoBehaviour
         {
             Debug.Log(
                 $"GameManager：消去数={totalOrbs}, " +
-                $"コンボ={comboCount}, 計算ダメージ={damage}"
+                $"コンボ={comboCount}, ダメージ={damage}"
             );
         }
 
-        // 消去した色に対応するキャラクターだけ攻撃させる。
+        // 消去した色に対応するPlayerだけ攻撃
         bool attackIssued = false;
 
         foreach (PlayerAttack playerAttack in playerAttacks)
@@ -167,8 +190,7 @@ public class GameManager : MonoBehaviour
             {
                 Debug.Log(
                     $"GameManager：{playerAttack.gameObject.name} " +
-                    $"が攻撃。色ID={type}, 消去数={matchedCount}, " +
-                    $"ダメージ={pieceDamage}"
+                    $"が攻撃。ダメージ={pieceDamage}"
                 );
             }
 
@@ -179,11 +201,66 @@ public class GameManager : MonoBehaviour
         if (!attackIssued && logDetails)
         {
             Debug.LogWarning(
-                "GameManager：消去した色とPlayerAttackのpieceKindが一致しません。" +
-                " PieceKindとドロップの色IDを確認してください。",
-                this
+                "GameManager：消去した色とPlayerAttackのpieceKindが一致しません。"
             );
         }
+
+        // プレイヤーの行動が終了したのでターンを加算
+        EndPlayerTurn();
+    }
+
+    /// <summary>
+    /// プレイヤーのターン終了処理。
+    /// </summary>
+    private void EndPlayerTurn()
+    {
+        playerTurnCount++;
+
+        if (logDetails)
+        {
+            Debug.Log(
+                $"プレイヤーターン：{playerTurnCount}/" +
+                $"{playerTurnsPerEnemyAttack}"
+            );
+        }
+
+        // 設定したターン数に到達したら敵が攻撃
+        if (playerTurnCount >= Mathf.Max(1, playerTurnsPerEnemyAttack))
+        {
+            playerTurnCount = 0;
+            EnemyAttack();
+        }
+    }
+
+    /// <summary>
+    /// 敵の攻撃処理。
+    /// </summary>
+    private void EnemyAttack()
+    {
+        if (playerHP == null)
+        {
+            playerHP = FindObjectOfType<PlayerHP>();
+        }
+
+        if (playerHP == null)
+        {
+            Debug.LogError("GameManager：PlayerHPが見つかりません。");
+            return;
+        }
+
+        if (playerHP.IsDead)
+        {
+            return;
+        }
+
+        if (logDetails)
+        {
+            Debug.Log(
+                $"敵の攻撃！ Playerに{enemyAttackDamage}ダメージ！"
+            );
+        }
+
+        playerHP.TakeDamage(enemyAttackDamage);
     }
 
     /// <summary>
@@ -217,7 +294,10 @@ public class GameManager : MonoBehaviour
         {
             if (playerAttack != null)
             {
-                playerAttack.Attack(targetEnemy, Mathf.Max(1, damage));
+                playerAttack.Attack(
+                    targetEnemy,
+                    Mathf.Max(1, damage)
+                );
             }
         }
     }
