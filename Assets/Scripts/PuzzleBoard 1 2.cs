@@ -15,6 +15,11 @@ using UnityEngine.InputSystem;
 /// ・落下、補充、連鎖
 /// ・コンボ表示、操作時間バー
 /// ・GameManagerへ色ごとの消去数とコンボ数を通知
+///
+/// 修正点：
+/// ・初期化をAwakeに移動し、GameManagerから先にInitializeBoardが呼ばれても動くように変更
+/// ・新旧Input Systemどちらの設定でも動くように変更（Both推奨）
+/// ・デバッグログ、timeScaleの警告を追加
 /// </summary>
 public class PuzzleBoard : MonoBehaviour
 {
@@ -56,6 +61,9 @@ public class PuzzleBoard : MonoBehaviour
 
     [Range(0.5f, 1f)]
     public float orbScale = 0.95f;
+
+    [Header("デバッグ")]
+    public bool debugLog = false;
 
     // ============================================================
     // GameManager連携
@@ -104,6 +112,7 @@ public class PuzzleBoard : MonoBehaviour
     private Camera cam;
     private Sprite orbSprite;
     private Sprite tileSprite;
+    private bool isSetup;
 
     private Orb heldOrb;
     private Vector2Int heldCell;
@@ -141,13 +150,45 @@ public class PuzzleBoard : MonoBehaviour
         Vector2Int.right
     };
 
+    // ============================================================
+    // 初期化
+    // ============================================================
+
+    private void Awake()
+    {
+        EnsureSetup();
+    }
+
     private void Start()
     {
+        if (Time.timeScale <= 0f)
+        {
+            Debug.LogWarning(
+                "PuzzleBoard：Time.timeScaleが0のため、操作・アニメーションが止まります。",
+                this
+            );
+        }
+
+        if (grid == null)
+        {
+            InitializeBoard(columns, rows);
+        }
+    }
+
+    /// <summary>
+    /// カメラ・スプライトなどの準備を一度だけ行う。
+    /// </summary>
+    private bool EnsureSetup()
+    {
+        if (isSetup)
+        {
+            return true;
+        }
+
         if (columns < 1 || rows < 1 || cellSize <= 0f)
         {
             Debug.LogError("PuzzleBoard：盤面設定が不正です。", this);
-            enabled = false;
-            return;
+            return false;
         }
 
         if (TypeCount <= 0)
@@ -156,9 +197,7 @@ public class PuzzleBoard : MonoBehaviour
                 "PuzzleBoard：ドロップ画像またはドロップ色を設定してください。",
                 this
             );
-
-            enabled = false;
-            return;
+            return false;
         }
 
         cam = Camera.main;
@@ -181,7 +220,8 @@ public class PuzzleBoard : MonoBehaviour
             4f
         );
 
-        InitializeBoard(columns, rows);
+        isSetup = true;
+        return true;
     }
 
     /// <summary>
@@ -198,6 +238,11 @@ public class PuzzleBoard : MonoBehaviour
 
         columns = boardColumns;
         rows = boardRows;
+
+        if (!EnsureSetup())
+        {
+            return;
+        }
 
         StopAllCoroutines();
 
@@ -221,15 +266,13 @@ public class PuzzleBoard : MonoBehaviour
 
         if (oldBackground != null)
         {
+            // 同フレームで再生成しても重複しないよう、即座に親から外す
+            oldBackground.SetParent(null);
             Destroy(oldBackground.gameObject);
         }
 
         backgroundCreated = false;
-
-        if (tileSprite != null)
-        {
-            CreateBackground();
-        }
+        CreateBackground();
 
         heldOrb = null;
         heldCell = Vector2Int.zero;
@@ -251,9 +294,11 @@ public class PuzzleBoard : MonoBehaviour
             }
         }
 
-        if (cam != null)
+        UpdateCameraSize();
+
+        if (debugLog)
         {
-            UpdateCameraSize();
+            Debug.Log($"PuzzleBoard：盤面を初期化しました（{columns}x{rows}）", this);
         }
     }
 
@@ -321,6 +366,11 @@ public class PuzzleBoard : MonoBehaviour
 
     private void Update()
     {
+        if (!isSetup || grid == null)
+        {
+            return;
+        }
+
         // 解像度が変わった場合だけカメラを再調整
         if (Screen.width != lastScreenWidth ||
             Screen.height != lastScreenHeight)
@@ -558,31 +608,38 @@ public class PuzzleBoard : MonoBehaviour
     // 入力
     // ============================================================
 
+    /// <summary>
+    /// ポインター（マウス／タッチ）の状態を読む。
+    /// 新Input System・旧Input Managerのどちらでも動作する。
+    /// </summary>
     private bool ReadPointer(
         out Vector2 pos,
         out bool down,
         out bool held)
     {
+        pos = default;
+        down = false;
+        held = false;
+
 #if ENABLE_INPUT_SYSTEM
         Pointer pointer = Pointer.current;
 
-        if (pointer == null)
+        if (pointer != null)
         {
-            pos = default;
-            down = false;
-            held = false;
-            return false;
+            pos = pointer.position.ReadValue();
+            down = pointer.press.wasPressedThisFrame;
+            held = pointer.press.isPressed;
+            return true;
         }
+#endif
 
-        pos = pointer.position.ReadValue();
-        down = pointer.press.wasPressedThisFrame;
-        held = pointer.press.isPressed;
-        return true;
-#else
+#if ENABLE_LEGACY_INPUT_MANAGER || !ENABLE_INPUT_SYSTEM
         pos = Input.mousePosition;
         down = Input.GetMouseButtonDown(0);
         held = Input.GetMouseButton(0);
         return true;
+#else
+        return false;
 #endif
     }
 
@@ -616,6 +673,11 @@ public class PuzzleBoard : MonoBehaviour
         {
             if (down)
             {
+                if (debugLog)
+                {
+                    Debug.Log($"PuzzleBoard：クリック world={world}", this);
+                }
+
                 TryPick(world);
             }
 
@@ -819,6 +881,7 @@ public class PuzzleBoard : MonoBehaviour
             }
         }
     }
+
     private bool AllSettled()
     {
         if (grid == null)
@@ -881,11 +944,8 @@ public class PuzzleBoard : MonoBehaviour
         if (comboCount > 0)
         {
             Debug.Log($"{comboCount} コンボ！");
-        }
 
-        // 連鎖終了後にGameManagerへ一度だけ通知する
-        if (comboCount > 0)
-        {
+            // 連鎖終了後にGameManagerへ一度だけ通知する
             OnMatchesResolved?.Invoke(
                 new Dictionary<int, int>(lastMatchCounts),
                 comboCount
@@ -1176,7 +1236,7 @@ public class PuzzleBoard : MonoBehaviour
 
     private void OnGUI()
     {
-        if (cam == null)
+        if (cam == null || !isSetup)
         {
             return;
         }
@@ -1251,7 +1311,10 @@ public class PuzzleBoard : MonoBehaviour
         }
     }
 
-    private void CancelDrag()
+    /// <summary>
+    /// ドラッグを中断して元のマスへ戻す（外部から呼び出し用）。
+    /// </summary>
+    public void CancelDrag()
     {
         if (heldOrb != null && heldOrb.tr != null)
         {
@@ -1270,6 +1333,10 @@ public class PuzzleBoard : MonoBehaviour
 
         heldOrb = null;
         moveStarted = false;
-        state = State.Idle;
+
+        if (state == State.Dragging)
+        {
+            state = State.Idle;
+        }
     }
 }
